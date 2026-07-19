@@ -1,0 +1,27 @@
+{
+  "crawler": {
+    "base_url": "https://www3.nhk.or.jp",
+    "lang": "zh",
+    "list_url": "https://www3.nhk.or.jp/nhkworld/zh/news/list/",
+    "list_selector": ".p-newsList .c-list.-type01 .c-items.-item03 > li.c-item.-media",
+    "json_endpoints": [
+      "https://www3.nhk.or.jp/nhkworld/data/zh/news/all.json",
+      "https://www3.nhk.or.jp/nhkworld/data/zh/news/list.json",
+      "https://www3.nhk.or.jp/nhkworld/data/zh/news/top_stories.json"
+    ],
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+    "patterns": {
+      "news_url_regex": "/nhkworld/zh/news/(?!list/?(?:$|\\?))[^\"'#?]+/?",
+      "news_id_url_template": "/nhkworld/zh/news/{news_id}/",
+      "inline_links_regex": "<a[^>]+href=[\"'](?P<href>[^\"']*/nhkworld/zh/news/[^\"']+)[\"'][^>]*>(?P<body>.*?)</a>"
+    }
+  },
+  "storage": {
+    "default_output": "news_data.json",
+    "audio_bucket": "audio",
+    "img_bucket": "img",
+    "mp3_dir": "mp3",
+    "pic_dir": "pic"
+  },
+  "spider_name": "NewsSpider"
+}

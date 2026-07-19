@@ -17,6 +17,10 @@ import re
 import subprocess
 import sys
 import time
+import warnings
+
+# 忽略 urllib3 的 OpenSSL/LibreSSL 兼容性警告
+warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL 1.1.1+")
 from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -844,12 +848,23 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
+    # 如果没有指定任何特定操作，默认执行完整流水线
+    if not any([args.detail, args.m3u8, args.download_audio, args.download_pic, args.upload_minio, args.test_minio]):
+        args.full_pipeline = True
+
     if args.full_pipeline:
         args.detail = True
         args.m3u8 = True
         args.download_audio = True
         args.download_pic = True
         args.upload_minio = True
+
+    log_status(
+        f"启动任务: source={args.source}, output={args.output}, "
+        f"detail={args.detail}, m3u8={args.m3u8}, "
+        f"download_audio={args.download_audio}, download_pic={args.download_pic}, "
+        f"upload_minio={args.upload_minio}"
+    )
 
     if args.test_minio:
         test_minio_connection(args.audio_bucket)

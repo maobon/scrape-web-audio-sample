@@ -24,7 +24,7 @@ warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL 1.1.
 from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, unquote, urljoin, urlparse
 from urllib.request import Request, urlopen
@@ -117,7 +117,7 @@ class NewsListParser(HTMLParser):
         self._current_image = ""
         self._in_link = False
 
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
         attr = {key: value or "" for key, value in attrs}
         if tag == "a":
             href = attr.get("href", "")
@@ -569,10 +569,15 @@ def extract_items_from_inline_links(page: str) -> list[NewsItem]:
     pattern = re.compile(pattern_str, re.IGNORECASE | re.DOTALL)
     items: list[NewsItem] = []
     for match in pattern.finditer(page):
-        title = _clean_text(re.sub(r"<[^>]+>", " ", match.group("body")))
-        url = urljoin(BASE_URL, html.unescape(match.group("href")))
-        if title and not any(item.url == url for item in items):
-            items.append(NewsItem(title=title, url=url))
+        body = match.group("body")
+        href = match.group("href")
+        if isinstance(body, (str, bytes)) and isinstance(href, (str, bytes)):
+            body_str = body.decode() if isinstance(body, bytes) else body
+            href_str = href.decode() if isinstance(href, bytes) else href
+            title = _clean_text(re.sub(r"<[^>]+>", " ", body_str))
+            url = urljoin(BASE_URL, html.unescape(href_str))
+            if title and not any(item.url == url for item in items):
+                items.append(NewsItem(title=title, url=url))
     return items
 
 

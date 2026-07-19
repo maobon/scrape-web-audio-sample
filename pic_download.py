@@ -3,14 +3,37 @@ import json
 import logging
 from pathlib import Path
 from urllib.parse import urlparse
+import ssl
 
 import requests
 import certifi
+from requests.adapters import HTTPAdapter
 
 from minio_client import upload_file
 
 logger = logging.getLogger("pic_download")
-VERIFY = certifi.where()
+
+
+class SSLAdapter(HTTPAdapter):
+    def init_poolmanager(self, *args, **kwargs):
+        context = ssl.create_default_context()
+        try:
+            context.set_ciphers('DEFAULT@SECLEVEL=1')
+        except ssl.SSLError:
+            pass
+            
+        try:
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+        except AttributeError:
+            pass
+        kwargs['ssl_context'] = context
+        return super().init_poolmanager(*args, **kwargs)
+
+
+# Global session for pic downloads
+session = requests.Session()
+session.mount("https://", SSLAdapter())
+session.verify = certifi.where()
 
 
 JSON_FILE = Path("news_data.json")
@@ -43,7 +66,7 @@ def download_pic_files(items: list, pic_dir: Path):
 
         try:
             logger.info(f"Downloading: {img_url}")
-            response = requests.get(img_url, timeout=15, headers={"User-Agent": USER_AGENT}, verify=VERIFY)
+            response = session.get(img_url, timeout=15, headers={"User-Agent": USER_AGENT})
             response.raise_for_status()
             output_file.write_bytes(response.content)
             downloaded += 1

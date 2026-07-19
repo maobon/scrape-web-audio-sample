@@ -1,12 +1,13 @@
 import hashlib
 import json
+import logging
 import re
 import subprocess
 from pathlib import Path
 
 
-def log_status(message: str) -> None:
-    print(f"[audio_download] {message}", flush=True)
+# Configure Logging
+logger = logging.getLogger("audio_download")
 
 
 def hash_m3u8_url(m3u8_url: str) -> str:
@@ -113,12 +114,12 @@ def main() -> None:
         if output.exists() and output.stat().st_size > 0:
             continue
 
-        print(f"[{index}/{len(items)}] Downloading: {item.get('title')}")
+        logger.info(f"[{index}/{len(items)}] Downloading: {item.get('title')}")
         total_sec = parse_duration(item.get("duration", ""))
         try:
             download_mp3(m3u8, output, total_seconds=total_sec)
         except Exception as e:
-            print(f"Failed: {e}")
+            logger.error(f"Failed: {e}")
 
 
 if __name__ == "__main__":

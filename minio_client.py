@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from typing import List, Optional, Union
@@ -9,6 +10,8 @@ MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() in {"1", "true", "yes"
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
 MINIO_PUBLIC_URL = os.getenv("MINIO_PUBLIC_URL", "").rstrip("/")
+
+logger = logging.getLogger("minio_client")
 
 
 def _get_minio_client():
@@ -46,7 +49,7 @@ def _content_type(path: Path) -> str:
 def _ensure_public_bucket(client, bucket: str, verbose: bool = False):
     if not client.bucket_exists(bucket):
         if verbose:
-            print(f"[MINIO] Bucket does not exist, creating: {bucket}")
+            logger.info(f"Bucket does not exist, creating: {bucket}")
         client.make_bucket(bucket)
 
     policy = f"""{{
@@ -74,7 +77,7 @@ def upload_file(
     client = _get_minio_client()
 
     if verbose:
-        print(f"[MINIO] Uploading: {file_path} -> {bucket}/{obj_name}")
+        logger.info(f"Uploading: {file_path} -> {bucket}/{obj_name}")
 
     _ensure_public_bucket(client, bucket, verbose=verbose)
     client.fput_object(

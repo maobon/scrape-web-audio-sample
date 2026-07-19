@@ -1,10 +1,13 @@
 import hashlib
 import json
+import logging
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from minio_client import upload_file
+
+logger = logging.getLogger("pic_download")
 
 
 JSON_FILE = Path("news_data.json")
@@ -36,27 +39,27 @@ def download_pic_files(items: list, pic_dir: Path):
             continue
 
         try:
-            print(f"Downloading: {img_url}")
+            logger.info(f"Downloading: {img_url}")
             req = Request(img_url, headers={"User-Agent": USER_AGENT})
             with urlopen(req, timeout=15) as resp:
                 output_file.write_bytes(resp.read())
             downloaded += 1
         except Exception as e:
-            print(f"Failed to download {img_url}: {e}")
+            logger.error(f"Failed to download {img_url}: {e}")
 
     return downloaded
 
 
 def main():
     if not JSON_FILE.exists():
-        print(f"{JSON_FILE} not found")
+        logger.warning(f"{JSON_FILE} not found")
         return
 
     with JSON_FILE.open("r", encoding="utf-8") as f:
         items = json.load(f)
 
     downloaded = download_pic_files(items, PIC_DIR)
-    print(f"Downloaded {downloaded} new pictures")
+    logger.info(f"Downloaded {downloaded} new pictures")
 
     uploaded = 0
     for item in [i for i in items if i.get("image")]:
@@ -70,7 +73,7 @@ def main():
             uploaded += 1
 
     JSON_FILE.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Uploaded {uploaded} pictures to MinIO")
+    logger.info(f"Uploaded {uploaded} pictures to MinIO")
 
 
 if __name__ == "__main__":

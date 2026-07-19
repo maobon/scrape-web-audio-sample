@@ -3,6 +3,8 @@ fastapi==0.128.8
 uvicorn==0.39.0
 minio==7.2.20
 
-# Network & Utilities
-urllib3==2.6.3
+# Network & Utilities (Pinned for CentOS compatibility)
+requests==2.32.3
+certifi==2024.7.4
+urllib3<2.0.0
 pydantic==2.13.4

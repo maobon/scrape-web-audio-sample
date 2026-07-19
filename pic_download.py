@@ -3,11 +3,14 @@ import json
 import logging
 from pathlib import Path
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+
+import requests
+import certifi
 
 from minio_client import upload_file
 
 logger = logging.getLogger("pic_download")
+VERIFY = certifi.where()
 
 
 JSON_FILE = Path("news_data.json")
@@ -40,9 +43,9 @@ def download_pic_files(items: list, pic_dir: Path):
 
         try:
             logger.info(f"Downloading: {img_url}")
-            req = Request(img_url, headers={"User-Agent": USER_AGENT})
-            with urlopen(req, timeout=15) as resp:
-                output_file.write_bytes(resp.read())
+            response = requests.get(img_url, timeout=15, headers={"User-Agent": USER_AGENT}, verify=VERIFY)
+            response.raise_for_status()
+            output_file.write_bytes(response.content)
             downloaded += 1
         except Exception as e:
             logger.error(f"Failed to download {img_url}: {e}")

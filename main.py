@@ -21,9 +21,10 @@ import warnings
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Optional
-from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urljoin, urlparse
-from urllib.request import Request, urlopen
+
+import requests
+import certifi
 
 from pydantic import BaseModel
 
@@ -95,6 +96,11 @@ logging.basicConfig(
     stream=sys.stderr
 )
 logger = logging.getLogger(SPIDER_NAME)
+
+# Global session for requests with updated CA bundle
+session = requests.Session()
+session.verify = certifi.where()
+session.headers.update({"User-Agent": USER_AGENT})
 
 
 class NewsItem(BaseModel):
@@ -174,11 +180,13 @@ def fetch_text(url: str, timeout: int = 20, retries: int = 2) -> str:
     for attempt in range(retries + 1):
         try:
             logger.info(f"请求页面: {url} (attempt {attempt + 1}/{retries + 1})")
-            request = Request(url, headers={"User-Agent": USER_AGENT})
-            with urlopen(request, timeout=timeout) as response:
-                charset = response.headers.get_content_charset() or "utf-8"
-                return response.read().decode(charset, errors="replace")
-        except (HTTPError, URLError, TimeoutError) as exc:
+            response = session.get(url, timeout=timeout)
+            response.raise_for_status()
+            # 自动处理编码
+            if response.encoding is None or response.encoding == 'ISO-8859-1':
+                response.encoding = response.apparent_encoding
+            return response.text
+        except (requests.RequestException, Exception) as exc:
             last_error = exc
             logger.info(f"请求失败: {url} ({exc})")
             if attempt < retries:
@@ -504,9 +512,9 @@ def download_pic_files(
             continue
 
         try:
-            request = Request(item.image, headers={"User-Agent": USER_AGENT})
-            with urlopen(request, timeout=15) as response:
-                output_file.write_bytes(response.read())
+            response = session.get(item.image, timeout=15)
+            response.raise_for_status()
+            output_file.write_bytes(response.content)
             downloaded_count += 1
         except Exception as exc:
             logger.info(f"图片下载失败: {item.image} ({exc})")

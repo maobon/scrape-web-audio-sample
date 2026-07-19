@@ -168,3 +168,4 @@ cython_debug/
 /news_data.json
 /mp3
 /pic
+config.json

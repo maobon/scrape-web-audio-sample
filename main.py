@@ -22,11 +22,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import unquote, urljoin, urlparse
-import ssl
 
 import requests
-import certifi
-from requests.adapters import HTTPAdapter
 
 from pydantic import BaseModel
 
@@ -99,31 +96,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(SPIDER_NAME)
 
-
-class SSLAdapter(HTTPAdapter):
-    """自定义适配器，强制使用 TLSv1.2 并降低安全门槛以兼容旧系统。"""
-    def init_poolmanager(self, *args, **kwargs):
-        context = ssl.create_default_context()
-        # 允许 SECLEVEL=1 以兼容旧版 OpenSSL
-        try:
-            context.set_ciphers('DEFAULT@SECLEVEL=1')
-        except ssl.SSLError:
-            # macOS 或某些系统可能不支持在 cipher string 中设置 SECLEVEL
-            pass
-            
-        try:
-            context.minimum_version = ssl.TLSVersion.TLSv1_2
-        except AttributeError:
-            # 旧版 Python 可能没有 TLSVersion 属性
-            pass
-        kwargs['ssl_context'] = context
-        return super().init_poolmanager(*args, **kwargs)
-
-
-# Global session for requests with updated CA bundle and SSL fix
+# Global session for requests
 session = requests.Session()
-session.mount("https://", SSLAdapter())
-session.verify = certifi.where()
 session.headers.update({"User-Agent": USER_AGENT})
 
 

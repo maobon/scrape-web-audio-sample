@@ -32,7 +32,9 @@ REQUIRED_CONFIG_PATHS: tuple[tuple[str, ...], ...] = (
     ("minio", "secure"),
     ("minio", "access_key"),
     ("minio", "secret_key"),
-    ("minio", "public_url"),
+    ("minio", "public", "scheme"),
+    ("minio", "public", "host"),
+    ("minio", "public", "port"),
     ("server", "host"),
     ("server", "port"),
 )
@@ -59,7 +61,7 @@ def validate_config(config: dict[str, Any]) -> None:
             continue
 
         if value is None or value == "":
-            if path not in {("minio", "public_url"), ("storage", "minio_prefix")}:
+            if path != ("storage", "minio_prefix"):
                 empty.append(".".join(path))
 
     if missing or empty:

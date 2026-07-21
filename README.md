@@ -36,7 +36,7 @@ python3 -m news_spider.clients.postgres -i <配置中指定的输出文件>
 
 项目必须读取 `config.json`。该文件被 `.gitignore` 忽略，适合放本地连接信息。
 
-爬虫目标、输出文件、PostgreSQL、MinIO 和 API 服务配置都写在 `config.json`。
+爬虫目标、输出文件、PostgreSQL、MinIO 和 API 服务配置都写在 `config.json`。生成到 JSON 里的资源访问地址由 `minio.public.scheme/host/port` 拼接。
 
 ## API 服务
 
@@ -64,7 +64,6 @@ news_spider/
   media/audio.py         # 音频下载和时长解析
   media/picture.py       # 图片下载和上传辅助
   media/process_audio.py # 音频 URL 处理辅助
-  utils/network.py       # 网络工具
 ```
 
 所有逻辑都在 `news_spider/` 包内。根目录不保留重复功能脚本。

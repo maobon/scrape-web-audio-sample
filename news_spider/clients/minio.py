@@ -27,13 +27,13 @@ def build_public_url(bucket: str, object_name: str) -> str:
     """Build a public URL for a MinIO object."""
     config = _minio_config()
     encoded_name = "/".join(quote(part, safe="") for part in object_name.split("/"))
-    public_url = str(config["public_url"]).rstrip("/")
+    public_config = config["public"]
+    scheme = str(public_config["scheme"])
+    host = str(public_config["host"])
+    port = str(public_config["port"])
+    public_url = f"{scheme}://{host}:{port}".rstrip("/")
 
-    if public_url:
-        return f"{public_url}/{bucket}/{encoded_name}"
-
-    scheme = "https" if config["secure"] else "http"
-    return f"{scheme}://{config['endpoint']}/{bucket}/{encoded_name}"
+    return f"{public_url}/{bucket}/{encoded_name}"
 
 
 def _content_type(path: Path) -> str:

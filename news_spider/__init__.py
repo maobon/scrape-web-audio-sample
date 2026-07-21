@@ -1,0 +1,1 @@
+"""Generic news spider package."""

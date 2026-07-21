@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""通用新闻列表爬虫.
-
-默认从配置文件读取抓取目标，不再依赖 Playwright，实现极速抓取。
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -12,7 +6,6 @@ import hashlib
 import html
 import json
 import logging
-import os
 import re
 import subprocess
 import sys
@@ -21,7 +14,7 @@ import warnings
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import unquote, urljoin, urlparse
+from urllib.parse import unquote, urljoin
 
 import requests
 
@@ -30,62 +23,30 @@ from pydantic import BaseModel
 # 忽略 urllib3 的 OpenSSL/LibreSSL 兼容性警告
 warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL 1.1.1+")
 
-from audio_download import download_mp3, hash_m3u8_url, parse_duration
-from minio_client import (
+from news_spider.clients.minio import (
     build_public_url,
     bucket_exists,
     list_object_names,
     upload_file,
 )
-
-# Configuration loading
-def load_config(config_path: str = "config.json") -> dict:
-    default_config = {
-        "m3u8_stream_base": "https://vod-stream.nhk.jp",
-        "crawler": {
-            "base_url": "https://www3.nhk.or.jp",
-            "lang": "zh",
-            "list_url": "https://www3.nhk.or.jp/nhkworld/zh/news/list/",
-            "list_selector": "a",
-            "json_endpoints": [
-                "https://www3.nhk.or.jp/nhkworld/data/zh/news/all.json"
-            ],
-            "user_agent": "Mozilla/5.0",
-            "patterns": {
-                "news_url_regex": ".*",
-                "news_id_url_template": "{news_id}",
-                "inline_links_regex": ".*"
-            }
-        },
-        "storage": {
-            "default_output": "news_data.json",
-            "audio_bucket": "audio",
-            "img_bucket": "img",
-            "mp3_dir": "mp3",
-            "pic_dir": "pic"
-        },
-        "spider_name": "NewsSpider"
-    }
-    
-    path = Path(config_path)
-    if not path.exists():
-        return default_config
-    
-    with path.open("r", encoding="utf-8") as f:
-        user_config = json.load(f)
-    return user_config
+from news_spider.clients.postgres import (
+    get_news_audio_table_name,
+    save_news_audio_to_postgres,
+)
+from news_spider.config import load_config
+from news_spider.media.audio import download_mp3, hash_m3u8_url, parse_duration
+from news_spider.media.picture import download_picture_files, get_image_ext
 
 CONFIG = load_config()
 CRAWLER_CFG = CONFIG["crawler"]
 STORAGE_CFG = CONFIG["storage"]
 
 BASE_URL = CRAWLER_CFG["base_url"]
-LANG = CRAWLER_CFG["lang"]
 LIST_URL = CRAWLER_CFG["list_url"]
 JSON_ENDPOINTS = CRAWLER_CFG["json_endpoints"]
 USER_AGENT = CRAWLER_CFG["user_agent"]
-SPIDER_NAME = CONFIG.get("spider_name", "NewsSpider")
-M3U8_STREAM_BASE = CONFIG.get("m3u8_stream_base", "https://vod-stream.nhk.jp")
+SPIDER_NAME = CONFIG["spider_name"]
+M3U8_STREAM_BASE = CONFIG["m3u8_stream_base"]
 
 # Configure Logging
 logging.basicConfig(
@@ -108,7 +69,7 @@ class NewsItem(BaseModel):
     published_at: str = ""
     summary: str = ""
     image: str = ""  # 原始图片 URL
-    img: str = ""    # 云端图片 URL
+    img: str = ""  # 云端图片 URL
     duration: str = ""
     m3u8_url: str = ""
     mp3_hash: str = ""
@@ -203,7 +164,7 @@ def crawl_news(
         source: str = "auto",
 ) -> list[NewsItem]:
     logger.info(f"开始抓取新闻列表，source={source}, limit={limit or 'all'}")
-    
+
     # 不再支持 browser 模式，强制使用 json/html
     if source == "json":
         items = fetch_from_json_endpoints()
@@ -216,7 +177,7 @@ def crawl_news(
             items = fetch_from_list_page()
 
     logger.info(f"新闻列表解析完成: {len(items)} 条")
-    
+
     # 应用 limit
     result_items = items[:limit] if limit > 0 else items
     if limit > 0:
@@ -235,36 +196,11 @@ def crawl_news(
         for index, item in enumerate(result_items, start=1):
             if not item.m3u8_url:
                 item.m3u8_url = find_m3u8_url(item.url)
-        
+
         success_count = sum(1 for item in result_items if item.m3u8_url)
         logger.info(f"m3u8 补全完成: 成功 {success_count} 条")
 
     return result_items
-
-
-def build_news_items(raw_items: list[dict[str, Any]]) -> list[NewsItem]:
-    items: list[NewsItem] = []
-    for raw_item in raw_items:
-        title = _clean_text(str(raw_item.get("title", "")))
-        url = str(raw_item.get("url", ""))
-        if not title or not url:
-            continue
-
-        full_url = urljoin(BASE_URL, url)
-        if any(item.url == full_url for item in items):
-            continue
-
-        image = str(raw_item.get("image", ""))
-        items.append(
-            NewsItem(
-                title=title,
-                url=full_url,
-                published_at=_clean_text(str(raw_item.get("published_at", ""))),
-                image=urljoin(BASE_URL, image) if image else "",
-                duration=_clean_text(str(raw_item.get("duration", ""))),
-            )
-        )
-    return items
 
 
 def find_m3u8_url(url: str) -> str:
@@ -305,13 +241,13 @@ def extract_items_from_json(payload: Any) -> list[NewsItem]:
     # 支持 {"data": [...]} 格式
     candidates = payload.get("data", []) if isinstance(payload, dict) else _find_news_dicts(payload)
     items: list[NewsItem] = []
-    
+
     id_template = CRAWLER_CFG["patterns"].get("news_id_url_template", "")
 
     for raw_item in candidates:
         title = _first_text(raw_item, ("title", "headline", "name"))
         url = _first_text(raw_item, ("page_url", "url", "link", "href"))
-        
+
         if not url and id_template:
             news_id = _first_text(raw_item, ("id", "news_id", "newsId"))
             if news_id:
@@ -333,10 +269,10 @@ def extract_items_from_json(payload: Any) -> list[NewsItem]:
         if isinstance(audios, dict):
             audio_path = audios.get("path", "")
             if audio_path:
-                # 规律推导: /.../ID.m4a -> https://vod-stream.nhk.jp/.../ID/index.m3u8
+                # 规律推导: 媒体文件路径 -> 流媒体播放列表地址
                 base_path = audio_path.rsplit(".", 1)[0]
                 m3u8_url = f"{M3U8_STREAM_BASE}{base_path}/index.m3u8"
-            
+
             raw_duration = audios.get("duration")
             if raw_duration is not None:
                 try:
@@ -388,7 +324,7 @@ def extract_items_from_inline_links(page: str) -> list[NewsItem]:
     pattern_str = CRAWLER_CFG["patterns"].get("inline_links_regex", "")
     if not pattern_str:
         return []
-        
+
     pattern = re.compile(pattern_str, re.IGNORECASE | re.DOTALL)
     items: list[NewsItem] = []
     for match in pattern.finditer(page):
@@ -492,39 +428,14 @@ def download_pic_files(
         items: list[NewsItem],
         pic_dir: Path,
 ) -> tuple[int, int]:
-    pic_dir.mkdir(parents=True, exist_ok=True)
-    downloaded_count = 0
-    skipped_count = 0
-
-    pic_items = [item for item in items if item.image]
-    logger.info(f"开始处理图片下载: {len(pic_items)} 条")
-
-    for index, item in enumerate(pic_items, start=1):
-        # 使用 URL hash 作为文件名
-        ext = _get_image_ext(item.image)
-        pic_hash = hashlib.sha256(item.image.encode("utf-8")).hexdigest()
-        output_file = pic_dir / f"{pic_hash}{ext}"
-
-        if output_file.exists() and output_file.stat().st_size > 0:
-            skipped_count += 1
-            continue
-
-        try:
-            response = session.get(item.image, timeout=15)
-            response.raise_for_status()
-            output_file.write_bytes(response.content)
-            downloaded_count += 1
-        except Exception as exc:
-            logger.info(f"图片下载失败: {item.image} ({exc})")
-
+    downloaded_count, skipped_count = download_picture_files(
+        items,
+        pic_dir,
+        USER_AGENT,
+        session=session,
+    )
     logger.info(f"图片下载结束: 下载 {downloaded_count} 条，跳过 {skipped_count} 条")
     return downloaded_count, skipped_count
-
-
-def _get_image_ext(url: str) -> str:
-    path = urlparse(url).path
-    suffix = Path(path).suffix.lower()
-    return suffix if suffix in {".jpg", ".jpeg", ".png"} else ".jpg"
 
 
 def upload_resources_to_minio(
@@ -562,7 +473,7 @@ def upload_resources_to_minio(
         logger.info(f"同步图片到 MinIO: bucket={img_bucket}")
         for item in [i for i in items if i.image]:
             pic_hash = hashlib.sha256(item.image.encode("utf-8")).hexdigest()
-            ext = _get_image_ext(item.image)
+            ext = get_image_ext(item.image)
             pic_file = pic_dir / f"{pic_hash}{ext}"
             obj_name = f"{prefix}/{pic_file.name}" if prefix else pic_file.name
 
@@ -642,33 +553,30 @@ def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
 
 
-def str_to_bool(value: str) -> bool:
-    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=f"抓取 {SPIDER_NAME} 新闻列表")
     parser.add_argument("-n", "--limit", type=int, default=0, help="最多抓取条数")
-    parser.add_argument("-o", "--output", type=Path, 
-                        default=Path(STORAGE_CFG.get("default_output", "news_data.json")),
+    parser.add_argument("-o", "--output", type=Path,
+                        default=Path(STORAGE_CFG["default_output"]),
                         help="输出 JSON")
     parser.add_argument("--detail", action="store_true", help="补充详情")
     parser.add_argument("--m3u8", action="store_true", help="抓取 m3u8")
     parser.add_argument("--download-audio", action="store_true", help="下载音频")
     parser.add_argument("--download-pic", action="store_true", help="下载图片")
-    parser.add_argument("--mp3-dir", type=Path, 
-                        default=Path(STORAGE_CFG.get("mp3_dir", "mp3")), help="音频目录")
-    parser.add_argument("--pic-dir", type=Path, 
-                        default=Path(STORAGE_CFG.get("pic_dir", "pic")), help="图片目录")
+    parser.add_argument("--mp3-dir", type=Path,
+                        default=Path(STORAGE_CFG["mp3_dir"]), help="音频目录")
+    parser.add_argument("--pic-dir", type=Path,
+                        default=Path(STORAGE_CFG["pic_dir"]), help="图片目录")
     parser.add_argument("--upload-minio", action="store_true", help="同步到 MinIO")
     parser.add_argument("--full-pipeline", action="store_true", help="执行完整流水线")
-    parser.add_argument("--audio-bucket", 
-                        default=STORAGE_CFG.get("audio_bucket", "audio"), help="音频 bucket")
-    parser.add_argument("--img-bucket", 
-                        default=STORAGE_CFG.get("img_bucket", "img"), help="图片 bucket")
-    parser.add_argument("--minio-prefix", default=os.getenv("MINIO_PREFIX", ""), help="对象前缀")
+    parser.add_argument("--audio-bucket",
+                        default=STORAGE_CFG["audio_bucket"], help="音频 bucket")
+    parser.add_argument("--img-bucket",
+                        default=STORAGE_CFG["img_bucket"], help="图片 bucket")
+    parser.add_argument("--minio-prefix", default=STORAGE_CFG["minio_prefix"], help="对象前缀")
     parser.add_argument("--source", choices=("html", "json", "auto"), default="auto")
     parser.add_argument("--test-minio", action="store_true", help="测试 MinIO")
+    parser.add_argument("--skip-db", action="store_true", help="跳过写入 PostgreSQL")
     return parser.parse_args()
 
 
@@ -690,7 +598,7 @@ def main() -> int:
         f"启动任务: source={args.source}, output={args.output}, "
         f"detail={args.detail}, m3u8={args.m3u8}, "
         f"download_audio={args.download_audio}, download_pic={args.download_pic}, "
-        f"upload_minio={args.upload_minio}"
+        f"upload_minio={args.upload_minio}, skip_db={args.skip_db}"
     )
 
     if args.test_minio:
@@ -725,6 +633,12 @@ def main() -> int:
             logger.info(f"MinIO 同步完成: 上传 {up}，跳过 {sk}")
 
         save_items(items, args.output)
+
+        if not args.skip_db:
+            saved_rows = save_news_audio_to_postgres(items, CONFIG)
+            table_name = get_news_audio_table_name(CONFIG)
+            logger.info(f"PostgreSQL 入库完成: {saved_rows} 条 -> {table_name}")
+
         logger.info("任务完成")
         return 0
     except Exception as exc:

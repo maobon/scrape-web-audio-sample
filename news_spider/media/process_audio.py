@@ -1,13 +1,16 @@
 import json
 from pathlib import Path
-from minio_client import build_public_url
+from typing import Optional
+
+from news_spider.clients.minio import build_public_url
+from news_spider.config import load_config
 
 
-NEWS_FILE = Path("news_data.json")
-
-
-def update_audio_urls(news_file=NEWS_FILE, bucket="audio"):
+def update_audio_urls(news_file: Optional[Path] = None, bucket: Optional[str] = None):
     """Legacy helper to rebuild audio URLs in JSON."""
+    config = load_config()
+    news_file = news_file or Path(config["storage"]["default_output"])
+    bucket = bucket or config["storage"]["audio_bucket"]
     if not news_file.exists():
         return 0
 
@@ -29,4 +32,5 @@ def update_audio_urls(news_file=NEWS_FILE, bucket="audio"):
 
 if __name__ == "__main__":
     count = update_audio_urls()
-    print(f"Updated {count} audio URLs in {NEWS_FILE}")
+    config = load_config()
+    print(f"Updated {count} audio URLs in {config['storage']['default_output']}")

@@ -5,6 +5,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from news_spider.config import load_config
+
 
 # Configure Logging
 logger = logging.getLogger("audio_download")
@@ -95,13 +97,14 @@ def download_mp3(m3u8_url: str, output_file: Path, total_seconds: int = 0) -> No
 
 
 def main() -> None:
-    news_file = Path("news_data.json")
+    config = load_config()
+    news_file = Path(config["storage"]["default_output"])
     if not news_file.exists():
         print(f"{news_file} not found")
         return
 
     items = json.loads(news_file.read_text(encoding="utf-8"))
-    mp3_dir = Path("mp3")
+    mp3_dir = Path(config["storage"]["mp3_dir"])
     mp3_dir.mkdir(exist_ok=True)
 
     for index, item in enumerate(items, start=1):

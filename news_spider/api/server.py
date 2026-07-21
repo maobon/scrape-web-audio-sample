@@ -5,6 +5,8 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from news_spider.config import load_config
+
 
 app = FastAPI()
 app.add_middleware(
@@ -14,7 +16,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-NEWS_FILE = Path(__file__).with_name("news_data.json")
+CONFIG = load_config()
+NEWS_FILE = Path(CONFIG["storage"]["default_output"])
 
 
 @app.get("/news")
@@ -25,5 +28,13 @@ def get_news():
     return {"news": news}
 
 
+def run() -> None:
+    uvicorn.run(
+        app,
+        host=str(CONFIG["server"]["host"]),
+        port=int(CONFIG["server"]["port"]),
+    )
+
+
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    run()

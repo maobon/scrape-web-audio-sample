@@ -1,38 +1,39 @@
 import logging
-import os
 from pathlib import Path
 from typing import List, Optional, Union
 from urllib.parse import quote
 
-# Centralized Configuration
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "127.0.0.1:9000")
-MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() in {"1", "true", "yes"}
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
-MINIO_PUBLIC_URL = os.getenv("MINIO_PUBLIC_URL", "").rstrip("/")
+from news_spider.config import load_config
 
 logger = logging.getLogger("minio_client")
 
 
+def _minio_config() -> dict:
+    return load_config()["minio"]
+
+
 def _get_minio_client():
     from minio import Minio
+    config = _minio_config()
     return Minio(
-        MINIO_ENDPOINT,
-        access_key=MINIO_ACCESS_KEY,
-        secret_key=MINIO_SECRET_KEY,
-        secure=MINIO_SECURE,
+        str(config["endpoint"]),
+        access_key=str(config["access_key"]),
+        secret_key=str(config["secret_key"]),
+        secure=bool(config["secure"]),
     )
 
 
 def build_public_url(bucket: str, object_name: str) -> str:
     """Build a public URL for a MinIO object."""
+    config = _minio_config()
     encoded_name = "/".join(quote(part, safe="") for part in object_name.split("/"))
+    public_url = str(config["public_url"]).rstrip("/")
 
-    if MINIO_PUBLIC_URL:
-        return f"{MINIO_PUBLIC_URL}/{bucket}/{encoded_name}"
+    if public_url:
+        return f"{public_url}/{bucket}/{encoded_name}"
 
-    scheme = "https" if MINIO_SECURE else "http"
-    return f"{scheme}://{MINIO_ENDPOINT}/{bucket}/{encoded_name}"
+    scheme = "https" if config["secure"] else "http"
+    return f"{scheme}://{config['endpoint']}/{bucket}/{encoded_name}"
 
 
 def _content_type(path: Path) -> str:
@@ -69,9 +70,12 @@ def _ensure_public_bucket(client, bucket: str, verbose: bool = False):
 def upload_file(
         path: Union[Path, str],
         object_name: Optional[str] = None,
-        bucket: str = "data",
+        bucket: Optional[str] = None,
         verbose: bool = False
 ) -> str:
+    if not bucket:
+        raise ValueError("bucket 必须从 config.json 读取后显式传入")
+
     file_path = Path(path)
     obj_name = object_name or file_path.name
     client = _get_minio_client()

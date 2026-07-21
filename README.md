@@ -15,7 +15,7 @@ pip install -r requirements.txt
 完整流水线：
 
 ```bash
-python3 -m news_spider
+./start.sh
 ```
 
 写入 PostgreSQL 时会先清空配置表并重置自增 `id`，再插入本次最新抓取结果。
@@ -23,7 +23,7 @@ python3 -m news_spider
 只抓取并保存 JSON，不写 PostgreSQL：
 
 ```bash
-python3 -m news_spider --skip-db
+./start.sh --skip-db
 ```
 
 把已有新闻 JSON 导入 PostgreSQL：
